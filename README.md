@@ -1,6 +1,7 @@
 -- SECRET BYPASS - Premium UI + ESP avançado + Auto-Return on Brainrot (Delta iOS/Android Fix)
 -- Ajustes aplicados: UI compacta para mobile, páginas com ScrollingFrame (rolagem),
 -- widgets reduzidos, correções em conexões de toggles (ex: invisibilidade / alertas)
+-- Correções importantes: Fly / Speed adaptados para Delta (iOS/Android) usando Humanoid.MoveDirection fallback
 
 local Players        = game:GetService("Players")
 local RunService     = game:GetService("RunService")
@@ -455,7 +456,7 @@ local FlySpeed = DEFAULT_FLY_SPEED
 local SpeedValue = DEFAULT_WALK_SPEED
 local AutoFlySpeed = AUTOFLY_DEFAULT
 
--- Fly implementation (usando BodyVelocity para compatibilidade mobile)
+-- === CORREÇÃO: Fly adaptado para mobile Delta (usa BodyVelocity + fallback Humanoid.MoveDirection) ===
 local flyBV = nil
 local function ensureFlyBV(hrp)
     if not hrp then return end
@@ -490,25 +491,38 @@ local function startFly()
 
         ensureFlyBV(hrp)
 
+        -- determina direção com suporte a teclado e mobile
         local forward = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
         local right   = Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z)
         local move = Vector3.new(0,0,0)
 
+        -- teclado tradicional
         if UIS:IsKeyDown(Enum.KeyCode.W) then move += forward end
         if UIS:IsKeyDown(Enum.KeyCode.S) then move -= forward end
         if UIS:IsKeyDown(Enum.KeyCode.A) then move -= right end
         if UIS:IsKeyDown(Enum.KeyCode.D) then move += right end
-        -- vertical
+
+        -- vertical input teclado
         local vy = 0
         if UIS:IsKeyDown(Enum.KeyCode.Space) then vy = FlySpeed end
         if UIS:IsKeyDown(Enum.KeyCode.LeftControl) or UIS:IsKeyDown(Enum.KeyCode.LeftShift) then vy = vy - FlySpeed end
 
-        if move.Magnitude > 0 then
-            local desired = move.Unit * FlySpeed
-            flyBV.Velocity = Vector3.new(desired.X, vy, desired.Z)
-        else
-            flyBV.Velocity = Vector3.new(0, vy, 0)
+        -- fallback mobile: usa MoveDirection do humanoid (quando não há teclado)
+        if move.Magnitude == 0 then
+            local hum = char:FindFirstChild("Humanoid")
+            if hum then
+                local md = hum.MoveDirection or Vector3.new(0,0,0)
+                -- MoveDirection é baseado na câmera (z/x plano), mantemos apenas X/Z
+                move = Vector3.new(md.X, 0, md.Z)
+            end
         end
+
+        -- calcula velocidade final sem fazer .Unit em vetor zero
+        local horizontal = Vector3.new(0,0,0)
+        if move.Magnitude > 0 then horizontal = move.Unit * FlySpeed end
+
+        -- se houver apenas subida (vy) sem movimento horizontal, aplica vertical sem erro
+        flyBV.Velocity = Vector3.new(horizontal.X, vy, horizontal.Z)
     end)
 end
 
@@ -517,7 +531,7 @@ local function stopFly()
     if flyBV then pcall(function() flyBV:Destroy() end) flyBV = nil end
 end
 
--- Speed implementation (usando Humanoid.WalkSpeed para mobile)
+-- Speed implementation (usando Humanoid.WalkSpeed para mobile) — reforça continuamente no Heartbeat
 local function applySpeed()
     local char = LocalPlayer.Character
     if not char then return end
