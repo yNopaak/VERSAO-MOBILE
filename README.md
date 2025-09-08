@@ -456,6 +456,39 @@ local FlySpeed = DEFAULT_FLY_SPEED
 local SpeedValue = DEFAULT_WALK_SPEED
 local AutoFlySpeed = AUTOFLY_DEFAULT
 
+-- Noclip implementation (robusto, start/stop functions)
+local NoclipOn = false
+local NoclipConn = nil
+
+local function startNoclip()
+    if NoclipConn then return end
+    NoclipConn = RunService.Stepped:Connect(function()
+        local char = LocalPlayer.Character
+        if not char then return end
+        for _, part in pairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                pcall(function() part.CanCollide = false end)
+            end
+        end
+    end)
+end
+
+local function stopNoclip()
+    if NoclipConn then
+        NoclipConn:Disconnect()
+        NoclipConn = nil
+    end
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _, part in pairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            pcall(function() part.CanCollide = true end)
+        end
+    end
+end
+
+
+
 -- === CORREÇÃO: Fly adaptado para mobile Delta (usa BodyVelocity + fallback Humanoid.MoveDirection) ===
 local flyBV = nil
 local function ensureFlyBV(hrp)
@@ -831,6 +864,19 @@ end)
 
 local _, setSpeedSlider = makeSlider(pagMov, "Velocidade Corrida (valor)", 10, 220, DEFAULT_WALK_SPEED, function(v) SpeedValue = v end)
 setSpeedSlider(DEFAULT_WALK_SPEED)
+
+-- Noclip toggle in Movement page
+local noclipToggle, setNoclipState = makeToggle(pagMov, "Noclip", function(state)
+    NoclipOn = state
+    if state then
+        startNoclip()
+    else
+        stopNoclip()
+    end
+    notify("Noclip " .. (state and "ativado" or "desativado"))
+end)
+
+
 
 -- Auto-return slider (Extras)
 local autoToggle, _ = makeToggle(pagExtra, "Auto-Return on Brainrot", function(state)
@@ -1233,60 +1279,3 @@ end)
 
 
 --------------------------------------------------
--- ADIÇÕES E MELHORIAS
---------------------------------------------------
-
--- Ajuste no Fly (agora funciona com subir/descer e WASD)
-local UIS = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local Camera = workspace.CurrentCamera
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local HRP = Character:WaitForChild("HumanoidRootPart")
-
-local flyVel
-
-RunService.RenderStepped:Connect(function()
-    if _G.FlyEnabled and HRP then
-        if not flyVel then
-            flyVel = Instance.new("BodyVelocity")
-            flyVel.MaxForce = Vector3.new(1e5,1e5,1e5)
-            flyVel.Parent = HRP
-        end
-
-        local vel = Vector3.zero
-        local look = Camera.CFrame.LookVector
-        local right = Camera.CFrame.RightVector
-
-        if UIS:IsKeyDown(Enum.KeyCode.W) then vel += look end
-        if UIS:IsKeyDown(Enum.KeyCode.S) then vel -= look end
-        if UIS:IsKeyDown(Enum.KeyCode.A) then vel -= right end
-        if UIS:IsKeyDown(Enum.KeyCode.D) then vel += right end
-        if UIS:IsKeyDown(Enum.KeyCode.Space) then vel += Vector3.new(0,1,0) end
-        if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then vel -= Vector3.new(0,1,0) end
-
-        flyVel.Velocity = vel * 60
-    else
-        if flyVel then
-            flyVel:Destroy()
-            flyVel = nil
-        end
-    end
-end)
-
--- Noclip real (atravessa paredes sem travar)
-RunService.Stepped:Connect(function()
-    if _G.NoclipEnabled and Character then
-        for _, part in pairs(Character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
-            end
-        end
-    end
-end)
-
--- Ajuste do Painel (compacto e rosa)
--- Basta aplicar em todos os Frames principais:
--- Frame.BackgroundColor3 = Color3.fromRGB(255,105,180)
--- Frame.Size = UDim2.new(0,250,0,320)
